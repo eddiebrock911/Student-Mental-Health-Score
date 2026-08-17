@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field
 from typing import Literal
 from fastapi.middleware.cors import CORSMiddleware
 
-model = joblib.load('Mental_Health_Model.pkl')
+model = joblib.load('mental_health_rf_pipeline.pkl')
+
 top_countries = ['Other','India','USA','Canada','Australia','UK','Germany','Mexico','Turkey','France']
 
 app = FastAPI()
@@ -67,7 +68,7 @@ def predict(data: StudentData):
         'Physical_Activity_Hours'   :data.physical_activity_hours,
         'Sleep_Hours_Per_Night'     :data.sleep_hours_per_night,
         'Stress_Level'              :data.stress_level,
-        'Grouped_country'           :country_group
+        'Grouped_Country'           :country_group
    }])
 
    prediction = model.predict(input_row)[0] #6.77
