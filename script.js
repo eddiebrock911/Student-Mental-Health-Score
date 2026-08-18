@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const API_BASE = "https://mental-health-score-x4hx.onrender.com/";
+  // Prefer live API; fall back to local uvicorn if you are running it.
+  const API_BASE = "https://mental-health-score-x4hx.onrender.com";
 
   const form = document.getElementById("predict-form");
   const submitBtn = document.getElementById("submit-btn");
@@ -22,15 +23,12 @@
 
   const GAUGE_ARC_LENGTH = 314; // approx pi * r(100)
 
-  // ---------------------------------------------------------
-  // Draw tick marks on both gauges (0..10, every 2 units)
-  // ---------------------------------------------------------
   function drawTicks() {
     document.querySelectorAll(".gauge-ticks").forEach((g) => {
       g.innerHTML = "";
       const cx = 120, cy = 140, rOuter = 100, rInner = 90;
       for (let i = 0; i <= 10; i += 2) {
-        const angle = Math.PI - (i / 10) * Math.PI; // 180deg -> 0deg
+        const angle = Math.PI - (i / 10) * Math.PI;
         const x1 = cx + rOuter * Math.cos(angle);
         const y1 = cy - rOuter * Math.sin(angle);
         const x2 = cx + rInner * Math.cos(angle);
@@ -46,9 +44,6 @@
   }
   drawTicks();
 
-  // ---------------------------------------------------------
-  // Segmented control (stress_level) wiring
-  // ---------------------------------------------------------
   const segGroup = document.getElementById("stress_level_group");
   const stressHiddenInput = document.getElementById("stress_level");
   segGroup.querySelectorAll(".seg-btn").forEach((btn) => {
@@ -60,9 +55,6 @@
     });
   });
 
-  // ---------------------------------------------------------
-  // Field-level error helpers
-  // ---------------------------------------------------------
   function fieldWrapper(input) {
     return input.closest(".field");
   }
@@ -88,9 +80,6 @@
     form.querySelectorAll(".error-msg").forEach((m) => (m.textContent = ""));
   }
 
-  // ---------------------------------------------------------
-  // Client-side validation mirroring the StudentData model
-  // ---------------------------------------------------------
   function validate(payload) {
     const errors = [];
 
@@ -127,9 +116,6 @@
     return errors;
   }
 
-  // ---------------------------------------------------------
-  // Gather form data into the exact StudentData shape
-  // ---------------------------------------------------------
   function collectPayload() {
     const fd = new FormData(form);
     return {
@@ -148,12 +134,12 @@
     };
   }
 
-  // ---------------------------------------------------------
-  // UI state switching
-  // ---------------------------------------------------------
   function showState(name) {
-    [stateIdle, stateLoading, stateResult, stateError].forEach((el) => (el.hidden = true));
-    ({ idle: stateIdle, loading: stateLoading, result: stateResult, error: stateError }[name]).hidden = false;
+    [stateIdle, stateLoading, stateResult, stateError].forEach((el) => {
+      if (el) el.hidden = true;
+    });
+    const next = { idle: stateIdle, loading: stateLoading, result: stateResult, error: stateError }[name];
+    if (next) next.hidden = false;
   }
 
   function setSubmitting(isSubmitting) {
@@ -184,32 +170,29 @@
     const clamped = Math.max(0, Math.min(10, score));
     const { label, context } = bandFor(clamped);
 
-    scoreNumberEl.textContent = score.toFixed(2);
+    scoreNumberEl.textContent = Number(score).toFixed(2);
     scoreBandEl.textContent = label;
     scoreContextEl.textContent = context;
 
-    // reset then animate the arc fill on next frame
-    gaugeFill.style.transition = "none";
-    gaugeFill.style.strokeDashoffset = String(GAUGE_ARC_LENGTH);
-    requestAnimationFrame(() => {
-      gaugeFill.style.transition = "";
-      const offset = GAUGE_ARC_LENGTH * (1 - clamped / 10);
-      gaugeFill.style.strokeDashoffset = String(offset);
-    });
+    if (gaugeFill) {
+      gaugeFill.style.transition = "none";
+      gaugeFill.style.strokeDashoffset = String(GAUGE_ARC_LENGTH);
+      requestAnimationFrame(() => {
+        gaugeFill.style.transition = "";
+        const offset = GAUGE_ARC_LENGTH * (1 - clamped / 10);
+        gaugeFill.style.strokeDashoffset = String(offset);
+      });
+    }
 
     showState("result");
   }
 
   function renderError(label, copy) {
-    errorLabelEl.textContent = label;
-    errorCopyEl.textContent = copy;
+    if (errorLabelEl) errorLabelEl.textContent = label;
+    if (errorCopyEl) errorCopyEl.textContent = copy;
     showState("error");
   }
 
-  // ---------------------------------------------------------
-  // Parse FastAPI / Pydantic 422 error responses into
-  // field-level messages where possible
-  // ---------------------------------------------------------
   function applyServerValidationErrors(detail) {
     if (!Array.isArray(detail)) return false;
     let matched = false;
@@ -225,9 +208,6 @@
     return matched;
   }
 
-  // ---------------------------------------------------------
-  // Submit handler
-  // ---------------------------------------------------------
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     clearAllErrors();
@@ -245,7 +225,7 @@
     showState("loading");
 
     try {
-      const res = await fetch(`${API_BASE}/predict`, {
+      const res = await fetch(`${API_BASE.replace(/\/$/, "")}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -272,33 +252,33 @@
       }
 
       const data = await res.json();
-      if (typeof data.predicted_mental_health_score !== "number") {
+      const score = Number(data.predicted_mental_health_score);
+      if (Number.isNaN(score)) {
         renderError("Unexpected response", "The API responded, but the score was missing or malformed.");
         return;
       }
 
-      renderResult(data.predicted_mental_health_score);
+      renderResult(score);
     } catch (err) {
       renderError(
         "Can't reach the server",
-        `Couldn't connect to ${API_BASE}. Make sure the backend is running (uvicorn main:app --port 2200 --reload) and reachable from this page.`
+        `Couldn't connect to ${API_BASE}. Make sure the backend is running and CORS is enabled.`
       );
     } finally {
       setSubmitting(false);
     }
   });
 
-  // live-clear errors as the user edits
   form.querySelectorAll("input, select").forEach((el) => {
     el.addEventListener("input", () => clearFieldError(el));
     el.addEventListener("change", () => clearFieldError(el));
   });
 
-  resetBtn.addEventListener("click", () => {
+  resetBtn?.addEventListener("click", () => {
     showState("idle");
   });
 
-  errorRetryBtn.addEventListener("click", () => {
+  errorRetryBtn?.addEventListener("click", () => {
     showState("idle");
   });
 })();
