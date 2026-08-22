@@ -310,7 +310,7 @@ pip install -r requirements.txt
 Start the FastAPI development server:
 
 ```bash
-uvicorn main:app --reload
+uvicorn main:app --port=8000 --reload
 ```
 
 The application will normally be available at:
